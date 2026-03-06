@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin · Kadlec & partneři</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Playfair+Display:wght@600&display=swap" rel="stylesheet">
+
+<!-- Quill.js WYSIWYG editor -->
+<link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
+<script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
+
+<!-- =====================================================
+  FIREBASE SDK
+  ===================================================== -->
+<script type="module">
+  // ⚙️ VÝVOJÁŘ: Vložte zde stejné Firebase konfigurační klíče jako v blog.html
+  import { initializeApp }            from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
+                                      from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+  import { getFirestore, collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc,
+           serverTimestamp, query, orderBy }
+                                      from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey:            "VLOŽTE_VÁŠ_API_KEY",
+    authDomain:        "VLOŽTE_VÁŠ_AUTH_DOMAIN",
+    projectId:         "VLOŽTE_VÁŠ_PROJECT_ID",
+    storageBucket:     "VLOŽTE_VÁŠ_STORAGE_BUCKET",
+    messagingSenderId: "VLOŽTE_VÁŠ_MESSAGING_SENDER_ID",
+    appId:             "VLOŽTE_VÁŠ_APP_ID"
+  };
+
+  const app  = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db   = getFirestore(app);
+
+  // Expose to global scope for inline handlers
+  window.__auth = auth;
+  window.__db   = db;
+  window.__fb   = { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc,
+                    serverTimestamp, query, orderBy, signInWithEmailAndPassword, signOut };
+
+  // Auth state change — show/hide views
+  onAuthStateChanged(auth, user => {
+    if (user) {
+      document.getElementById('view-login').style.display    = 'none';
+      document.getElementById('view-dashboard').style.display = 'block';
+      document.getElementById('admin-email').textContent     = user.email;
+      loadArticles();
+    } else {
+      document.getElementById('view-login').style.display    = 'flex';
+      document.getElementById('view-dashboard').style.display = 'none';
+      document.getElementById('view-editor').style.display   = 'none';
+    }
+  });
+</script>
+
+<style>
+:root {
+  --forest: #113225;
+  --forest-mid: #1e4d35;
+  --gold: #b5935a;
+  --gold-light: #d4af7a;
+  --oat: #F9F7F3;
+  --oat-dark: #f0ece4;
+  --cream: #fffdf9;
+  --text: #1e2120;
+  --muted: #5a6360;
+  --border: #e2ddd6;
+  --danger: #c0392b;
+  --success: #27ae60;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'DM Sans', sans-serif; background: #f5f4f1; color: var(--text); font-size: 14px; min-height: 100vh; }
+
+/* ── LOGIN ── */
+#view-login { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: var(--forest); }
+.login-box { background: var(--cream); padding: 48px 40px; width: 100%; max-width: 400px; box-shadow: 0 32px 80px rgba(0,0,0,.3); }
+.login-logo { font-family: 'Playfair Display', serif; font-size: 18px; font-weight: 600; color: var(--forest); margin-bottom: 4px; }
+.login-logo span { color: var(--gold); }
+.login-sub { font-size: 12px; color: var(--muted); margin-bottom: 32px; letter-spacing: .05em; text-transform: uppercase; }
+.form-group { margin-bottom: 16px; }
+.form-label { display: block; font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.form-input { width: 100%; padding: 12px 14px; border: 1px solid var(--border); background: var(--oat); font-size: 14px; color: var(--text); outline: none; font-family: 'DM Sans', sans-serif; transition: border-color .2s; }
+.form-input:focus { border-color: var(--forest); background: white; }
+.btn-primary { width: 100%; padding: 14px; background: var(--forest); color: var(--oat); font-weight: 600; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: background .2s; margin-top: 8px; }
+.btn-primary:hover { background: var(--forest-mid); }
+.login-error { font-size: 13px; color: var(--danger); margin-top: 12px; display: none; }
+
+/* ── DASHBOARD LAYOUT ── */
+#view-dashboard, #view-editor { display: none; }
+
+.admin-topbar { background: var(--forest); padding: 0 32px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+.admin-topbar-logo { font-family: 'Playfair Display', serif; font-size: 14px; font-weight: 600; color: var(--oat); }
+.admin-topbar-logo span { color: var(--gold); }
+.admin-topbar-right { display: flex; align-items: center; gap: 16px; }
+.admin-email { font-size: 12px; color: rgba(249,247,243,.5); }
+.btn-logout { font-size: 12px; color: rgba(249,247,243,.6); background: none; border: 1px solid rgba(255,255,255,.15); padding: 6px 14px; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all .2s; }
+.btn-logout:hover { color: var(--oat); border-color: rgba(255,255,255,.4); }
+
+.admin-main { max-width: 1000px; margin: 0 auto; padding: 40px 32px 80px; }
+@media (max-width: 640px) { .admin-main { padding: 24px 16px 60px; } }
+
+.admin-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+.admin-section-header h1 { font-family: 'Playfair Display', serif; font-size: 1.5rem; font-weight: 600; color: var(--forest); }
+.btn-new { display: inline-flex; align-items: center; gap: 8px; padding: 11px 22px; background: var(--forest); color: var(--oat); font-size: 13px; font-weight: 600; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: background .2s; }
+.btn-new:hover { background: var(--forest-mid); }
+.btn-new svg { width: 15px; height: 15px; }
+
+/* ── STATS ── */
+.stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 32px; }
+@media (max-width: 640px) { .stats-row { grid-template-columns: 1fr 1fr; } }
+.stat-card { background: var(--cream); border: 1px solid var(--border); padding: 20px 24px; }
+.stat-card-num { font-family: 'Playfair Display', serif; font-size: 2rem; font-weight: 600; color: var(--forest); line-height: 1; }
+.stat-card-num span { font-size: 1.1rem; color: var(--gold); }
+.stat-card-label { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+/* ── TABLE ── */
+.articles-table-wrap { background: var(--cream); border: 1px solid var(--border); overflow: hidden; }
+.articles-table { width: 100%; border-collapse: collapse; }
+.articles-table th { background: var(--oat-dark); padding: 12px 16px; text-align: left; font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); }
+.articles-table td { padding: 14px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.articles-table tr:last-child td { border-bottom: none; }
+.articles-table tr:hover td { background: var(--oat); }
+.article-title-cell { font-weight: 500; color: var(--text); max-width: 300px; }
+.article-title-cell .cat { font-size: 11px; color: var(--muted); font-weight: 400; margin-top: 2px; }
+.badge { display: inline-block; padding: 3px 10px; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.badge-published { background: rgba(39,174,96,.12); color: var(--success); }
+.badge-draft { background: rgba(90,99,96,.1); color: var(--muted); }
+.table-actions { display: flex; gap: 8px; }
+.btn-edit { padding: 6px 14px; font-size: 12px; font-weight: 500; background: none; border: 1px solid var(--border); color: var(--forest); cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all .2s; }
+.btn-edit:hover { border-color: var(--forest); background: var(--oat-dark); }
+.btn-delete { padding: 6px 14px; font-size: 12px; font-weight: 500; background: none; border: 1px solid transparent; color: var(--muted); cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all .2s; }
+.btn-delete:hover { color: var(--danger); border-color: rgba(192,57,43,.3); }
+.table-empty { padding: 48px; text-align: center; color: var(--muted); font-size: 14px; }
+
+/* ── EDITOR ── */
+.editor-header { display: flex; align-items: center; gap: 16px; margin-bottom: 32px; }
+.btn-back { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); background: none; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: color .2s; padding: 0; }
+.btn-back:hover { color: var(--forest); }
+.btn-back svg { width: 16px; height: 16px; }
+.editor-title-label { font-family: 'Playfair Display', serif; font-size: 1.3rem; font-weight: 600; color: var(--forest); }
+
+.editor-grid { display: grid; grid-template-columns: 1fr 300px; gap: 24px; align-items: start; }
+@media (max-width: 760px) { .editor-grid { grid-template-columns: 1fr; } }
+
+.editor-card { background: var(--cream); border: 1px solid var(--border); padding: 28px; }
+.editor-card + .editor-card { margin-top: 20px; }
+.editor-card-title { font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.field-group { margin-bottom: 18px; }
+.field-group:last-child { margin-bottom: 0; }
+.field-label { display: block; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.field-input { width: 100%; padding: 11px 14px; border: 1px solid var(--border); background: var(--oat); font-size: 14px; color: var(--text); outline: none; font-family: 'DM Sans', sans-serif; transition: border-color .2s; }
+.field-input:focus { border-color: var(--forest); background: white; }
+.field-select { width: 100%; padding: 11px 14px; border: 1px solid var(--border); background: var(--oat); font-size: 14px; color: var(--text); outline: none; font-family: 'DM Sans', sans-serif; cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpolyline points='1 1 6 7 11 1' fill='none' stroke='%235a6360' stroke-width='1.5'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; }
+.field-textarea { width: 100%; padding: 11px 14px; border: 1px solid var(--border); background: var(--oat); font-size: 13.5px; color: var(--text); outline: none; font-family: 'DM Sans', sans-serif; resize: vertical; min-height: 80px; transition: border-color .2s; line-height: 1.6; }
+.field-textarea:focus { border-color: var(--forest); background: white; }
+.field-hint { font-size: 11px; color: var(--muted); margin-top: 5px; }
+
+/* Quill overrides */
+.ql-container { font-family: 'DM Sans', sans-serif; font-size: 14px; border-color: var(--border) !important; border-top: none !important; background: var(--oat); min-height: 320px; }
+.ql-toolbar { border-color: var(--border) !important; background: var(--oat-dark); }
+.ql-editor { min-height: 300px; line-height: 1.7; }
+
+/* Image preview */
+.img-preview { width: 100%; height: 160px; object-fit: cover; display: none; margin-top: 10px; border: 1px solid var(--border); }
+.img-preview.visible { display: block; }
+
+/* Status toggle */
+.status-toggle { display: flex; gap: 0; margin-top: 4px; }
+.status-opt { flex: 1; padding: 10px; text-align: center; font-size: 12px; font-weight: 500; border: 1px solid var(--border); cursor: pointer; transition: all .2s; background: var(--cream); color: var(--muted); font-family: 'DM Sans', sans-serif; }
+.status-opt:first-child { border-right: none; }
+.status-opt.active-pub { background: var(--success); color: white; border-color: var(--success); font-weight: 600; }
+.status-opt.active-draft { background: var(--forest); color: var(--oat); border-color: var(--forest); font-weight: 600; }
+
+/* Save button area */
+.save-row { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+.btn-save { width: 100%; padding: 14px; background: var(--forest); color: var(--oat); font-weight: 600; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all .2s; }
+.btn-save:hover { background: var(--forest-mid); }
+.btn-save:disabled { opacity: .5; cursor: not-allowed; }
+.save-feedback { font-size: 12px; text-align: center; display: none; padding: 8px; }
+.save-feedback.success { color: var(--success); background: rgba(39,174,96,.08); display: block; }
+.save-feedback.error { color: var(--danger); background: rgba(192,57,43,.08); display: block; }
+
+/* Loading overlay */
+.loading-overlay { position: fixed; inset: 0; background: rgba(249,247,243,.8); display: flex; align-items: center; justify-content: center; z-index: 999; display: none; }
+.spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--forest); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- ══ LOADING ══ -->
+<div class="loading-overlay" id="loading"><div class="spinner"></div></div>
+
+<!-- ══ LOGIN ══ -->
+<div id="view-login">
+  <div class="login-box">
+    <div class="login-logo">Kadlec <span>&</span> partneři</div>
+    <div class="login-sub">Administrační panel</div>
+    <div class="form-group">
+      <label class="form-label">E-mail</label>
+      <input type="email" class="form-input" id="login-email" placeholder="vas@email.cz" autocomplete="email">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Heslo</label>
+      <input type="password" class="form-input" id="login-password" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="btn-primary" onclick="doLogin()">Přihlásit se</button>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
+
+<!-- ══ DASHBOARD ══ -->
+<div id="view-dashboard">
+  <div class="admin-topbar">
+    <div class="admin-topbar-logo">Kadlec <span>&</span> partneři <span style="color:rgba(249,247,243,.3);font-size:11px;font-family:'DM Sans',sans-serif;font-weight:400;margin-left:8px">/ Admin</span></div>
+    <div class="admin-topbar-right">
+      <span class="admin-email" id="admin-email"></span>
+      <button class="btn-logout" onclick="doLogout()">Odhlásit</button>
+    </div>
+  </div>
+
+  <div class="admin-main">
+    <!-- Stats -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-card-num" id="stat-total">—</div>
+        <div class="stat-card-label">Celkem článků</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-num" id="stat-published">—</div>
+        <div class="stat-card-label">Publikováno</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-num" id="stat-draft">—</div>
+        <div class="stat-card-label">Koncepty</div>
+      </div>
+    </div>
+
+    <!-- Table header -->
+    <div class="admin-section-header">
+      <h1>Články</h1>
+      <button class="btn-new" onclick="openEditor(null)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Nový článek
+      </button>
+    </div>
+
+    <div class="articles-table-wrap">
+      <table class="articles-table">
+        <thead>
+          <tr>
+            <th>Název článku</th>
+            <th>Datum</th>
+            <th>Status</th>
+            <th>Akce</th>
+          </tr>
+        </thead>
+        <tbody id="articles-tbody">
+          <tr><td colspan="4" class="table-empty">Načítám…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══ EDITOR ══ -->
+<div id="view-editor">
+  <div class="admin-topbar">
+    <div class="admin-topbar-logo">Kadlec <span>&</span> partneři <span style="color:rgba(249,247,243,.3);font-size:11px;font-family:'DM Sans',sans-serif;font-weight:400;margin-left:8px">/ Editor</span></div>
+    <div class="admin-topbar-right">
+      <span class="admin-email" id="admin-email-2"></span>
+      <button class="btn-logout" onclick="doLogout()">Odhlásit</button>
+    </div>
+  </div>
+
+  <div class="admin-main">
+    <div class="editor-header">
+      <button class="btn-back" onclick="showDashboard()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        Zpět na seznam
+      </button>
+      <div class="editor-title-label" id="editor-heading">Nový článek</div>
+    </div>
+
+    <div class="editor-grid">
+
+      <!-- LEFT: Main content -->
+      <div>
+        <div class="editor-card">
+          <div class="editor-card-title">Obsah článku</div>
+          <div class="field-group">
+            <label class="field-label">Nadpis <span style="color:#c0392b">*</span></label>
+            <input type="text" class="field-input" id="f-title" placeholder="Např. Jak na hypotéku v roce 2026">
+          </div>
+          <div class="field-group">
+            <label class="field-label">Úryvek (perex)</label>
+            <textarea class="field-textarea" id="f-excerpt" placeholder="Krátký popis článku, který se zobrazí v přehledu…"></textarea>
+          </div>
+          <div class="field-group">
+            <label class="field-label">Text článku <span style="color:#c0392b">*</span></label>
+            <div id="quill-editor"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Meta -->
+      <div>
+        <div class="editor-card">
+          <div class="editor-card-title">Nastavení</div>
+
+          <div class="field-group">
+            <label class="field-label">Status</label>
+            <div class="status-toggle">
+              <button class="status-opt active-pub" id="status-published" onclick="setStatus('published')">Publikováno</button>
+              <button class="status-opt" id="status-draft" onclick="setStatus('draft')">Koncept</button>
+            </div>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label">Kategorie</label>
+            <select class="field-select" id="f-category">
+              <option value="Hypotéky">Hypotéky</option>
+              <option value="Investice">Investice</option>
+              <option value="Penze">Penze</option>
+              <option value="Ze života">Ze života</option>
+            </select>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label">URL náhledového obrázku</label>
+            <input type="url" class="field-input" id="f-image" placeholder="https://…" oninput="previewImage()">
+            <div class="field-hint">Odkaz na obrázek (Unsplash, vlastní server…)</div>
+            <img class="img-preview" id="img-preview" alt="Náhled obrázku">
+          </div>
+
+          <div class="save-row">
+            <button class="btn-save" id="btn-save" onclick="saveArticle()">Uložit článek</button>
+            <div class="save-feedback" id="save-feedback"></div>
+          </div>
+        </div>
+
+        <div class="editor-card" style="margin-top:16px">
+          <div class="editor-card-title">Tip pro psaní</div>
+          <p style="font-size:12.5px;color:var(--muted);line-height:1.65">Používejte nadpisy (H2, H3) pro strukturu. Kratší odstavce jsou lépe čitelné. Cílová délka článku: 500–1200 slov.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+let quill = null
+let currentArticleId = null
+let currentStatus = 'published'
+let allArticles = []
+
+// ── LOGIN / LOGOUT ──
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim()
+  const pass  = document.getElementById('login-password').value
+  const errEl = document.getElementById('login-error')
+  errEl.style.display = 'none'
+  showLoading(true)
+  try {
+    const { signInWithEmailAndPassword } = window.__fb
+    await signInWithEmailAndPassword(window.__auth, email, pass)
+  } catch(e) {
+    errEl.textContent = 'Přihlášení selhalo. Zkontrolujte e-mail a heslo.'
+    errEl.style.display = 'block'
+  } finally { showLoading(false) }
+}
+
+async function doLogout() {
+  const { signOut } = window.__fb
+  await signOut(window.__auth)
+}
+
+// ── DASHBOARD ──
+function showDashboard() {
+  document.getElementById('view-dashboard').style.display = 'block'
+  document.getElementById('view-editor').style.display   = 'none'
+  loadArticles()
+}
+
+async function loadArticles() {
+  const { collection, getDocs, query, orderBy } = window.__fb
+  const db = window.__db
+  try {
+    const q    = query(collection(db, 'articles'), orderBy('createdAt', 'desc'))
+    const snap = await getDocs(q)
+    allArticles = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    renderTable(allArticles)
+    renderStats(allArticles)
+  } catch(e) {
+    console.error(e)
+    document.getElementById('articles-tbody').innerHTML =
+      `<tr><td colspan="4" class="table-empty">Chyba načítání. Zkontrolujte Firebase konfiguraci.</td></tr>`
+  }
+}
+
+function renderStats(articles) {
+  const pub   = articles.filter(a => a.status === 'published').length
+  const draft = articles.filter(a => a.status === 'draft').length
+  document.getElementById('stat-total').textContent     = articles.length
+  document.getElementById('stat-published').textContent = pub
+  document.getElementById('stat-draft').textContent     = draft
+}
+
+function renderTable(articles) {
+  const tbody = document.getElementById('articles-tbody')
+  if (!articles.length) {
+    tbody.innerHTML = `<tr><td colspan="4" class="table-empty">Zatím žádné články. Vytvořte první!</td></tr>`
+    return
+  }
+  tbody.innerHTML = articles.map(a => {
+    const date = a.createdAt ? a.createdAt.toDate().toLocaleDateString('cs-CZ') : '—'
+    const badge = a.status === 'published'
+      ? `<span class="badge badge-published">Publikováno</span>`
+      : `<span class="badge badge-draft">Koncept</span>`
+    return `
+      <tr>
+        <td class="article-title-cell">
+          <div>${a.title || '(bez názvu)'}</div>
+          <div class="cat">${a.category || ''}</div>
+        </td>
+        <td style="color:var(--muted);white-space:nowrap">${date}</td>
+        <td>${badge}</td>
+        <td>
+          <div class="table-actions">
+            <button class="btn-edit" onclick="openEditor('${a.id}')">Upravit</button>
+            <button class="btn-delete" onclick="deleteArticle('${a.id}', '${(a.title||'').replace(/'/g,"\\'")}')">Smazat</button>
+          </div>
+        </td>
+      </tr>`
+  }).join('')
+}
+
+// ── EDITOR ──
+function openEditor(id) {
+  document.getElementById('view-dashboard').style.display = 'none'
+  document.getElementById('view-editor').style.display   = 'block'
+  currentArticleId = id
+
+  // Init Quill if not yet done
+  if (!quill) {
+    quill = new Quill('#quill-editor', {
+      theme: 'snow',
+      placeholder: 'Začněte psát text článku…',
+      modules: {
+        toolbar: [
+          [{ header: [2, 3, false] }],
+          ['bold', 'italic'],
+          [{ list: 'ordered' }, { list: 'bullet' }],
+          ['blockquote', 'link'],
+          ['clean']
+        ]
+      }
+    })
+  }
+
+  if (id) {
+    // Edit existing
+    document.getElementById('editor-heading').textContent = 'Upravit článek'
+    const a = allArticles.find(x => x.id === id)
+    if (a) {
+      document.getElementById('f-title').value    = a.title || ''
+      document.getElementById('f-excerpt').value  = a.excerpt || ''
+      document.getElementById('f-category').value = a.category || 'Hypotéky'
+      document.getElementById('f-image').value    = a.imageUrl || ''
+      quill.root.innerHTML                        = a.content || ''
+      setStatus(a.status || 'published')
+      previewImage()
+    }
+  } else {
+    // New article
+    document.getElementById('editor-heading').textContent = 'Nový článek'
+    document.getElementById('f-title').value   = ''
+    document.getElementById('f-excerpt').value = ''
+    document.getElementById('f-image').value   = ''
+    quill.root.innerHTML                       = ''
+    document.getElementById('f-category').value = 'Hypotéky'
+    setStatus('published')
+    document.getElementById('img-preview').classList.remove('visible')
+    document.getElementById('save-feedback').className = 'save-feedback'
+  }
+  // Sync email label
+  const auth = window.__auth
+  if (auth.currentUser) document.getElementById('admin-email-2').textContent = auth.currentUser.email
+}
+
+function setStatus(s) {
+  currentStatus = s
+  document.getElementById('status-published').className =
+    'status-opt' + (s === 'published' ? ' active-pub' : '')
+  document.getElementById('status-draft').className =
+    'status-opt' + (s === 'draft' ? ' active-draft' : '')
+}
+
+function previewImage() {
+  const url = document.getElementById('f-image').value.trim()
+  const img = document.getElementById('img-preview')
+  if (url) { img.src = url; img.classList.add('visible') }
+  else img.classList.remove('visible')
+}
+
+async function saveArticle() {
+  const title = document.getElementById('f-title').value.trim()
+  if (!title) { showFeedback('Nadpis je povinný.', 'error'); return }
+
+  const data = {
+    title,
+    excerpt:   document.getElementById('f-excerpt').value.trim(),
+    category:  document.getElementById('f-category').value,
+    imageUrl:  document.getElementById('f-image').value.trim(),
+    content:   quill.root.innerHTML,
+    status:    currentStatus
+  }
+
+  const btn = document.getElementById('btn-save')
+  btn.disabled = true
+  showLoading(true)
+
+  const { addDoc, updateDoc, serverTimestamp, collection, doc } = window.__fb
+  const db = window.__db
+  try {
+    if (currentArticleId) {
+      // Update
+      data.updatedAt = serverTimestamp()
+      await updateDoc(doc(db, 'articles', currentArticleId), data)
+    } else {
+      // Create
+      data.createdAt    = serverTimestamp()
+      data.publishedAt  = currentStatus === 'published' ? serverTimestamp() : null
+      data.updatedAt    = serverTimestamp()
+      const ref = await addDoc(collection(db, 'articles'), data)
+      currentArticleId = ref.id
+      document.getElementById('editor-heading').textContent = 'Upravit článek'
+    }
+    showFeedback('Uloženo!', 'success')
+    await loadArticles()
+  } catch(e) {
+    console.error(e)
+    showFeedback('Chyba při ukládání. Zkuste to znovu.', 'error')
+  } finally {
+    btn.disabled = false
+    showLoading(false)
+  }
+}
+
+async function deleteArticle(id, title) {
+  if (!confirm(`Opravdu smazat článek "${title}"? Tuto akci nelze vrátit.`)) return
+  const { deleteDoc, doc } = window.__fb
+  showLoading(true)
+  try {
+    await deleteDoc(doc(window.__db, 'articles', id))
+    await loadArticles()
+  } catch(e) {
+    alert('Smazání selhalo.')
+  } finally { showLoading(false) }
+}
+
+// ── HELPERS ──
+function showFeedback(msg, type) {
+  const el = document.getElementById('save-feedback')
+  el.textContent = msg
+  el.className = 'save-feedback ' + type
+  setTimeout(() => { el.className = 'save-feedback' }, 4000)
+}
+
+function showLoading(show) {
+  document.getElementById('loading').style.display = show ? 'flex' : 'none'
+}
+</script>
+</body>
+</html>
