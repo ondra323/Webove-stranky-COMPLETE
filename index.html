@@ -826,7 +826,7 @@ input[type="number"] { -moz-appearance: textfield; }
   // 2. Vytvořte Email Template s proměnnými: {{name}}, {{email}}, {{phone}}, {{service}}, {{term}}, {{note}}
   //    - To Email: kadlec.ondrej@insia.com
   // 3. Zkopírujte Public Key z Account → API Keys
-  (function(){ emailjs.init("VLOŽTE_VÁŠ_EMAILJS_PUBLIC_KEY"); })();
+  (function(){ emailjs.init(CPb7Fs8T2eyD6612X); })();
 </script>
 
 </head>
@@ -1195,8 +1195,8 @@ function submitForm(){
     try {
       if(typeof emailjs !== 'undefined' && emailjs.send) {
         await emailjs.send(
-          'VLOŽTE_VÁŠ_SERVICE_ID',   // ⚙️ VÝVOJÁŘ: Service ID z EmailJS
-          'VLOŽTE_VÁŠ_TEMPLATE_ID',  // ⚙️ VÝVOJÁŘ: Template ID z EmailJS
+          service_0zu8waq,   // ⚙️ VÝVOJÁŘ: Service ID z EmailJS
+          Contact Us,  // ⚙️ VÝVOJÁŘ: Template ID z EmailJS
           data
         );
       }
