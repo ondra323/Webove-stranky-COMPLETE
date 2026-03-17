@@ -824,7 +824,7 @@ input[type="number"] { -moz-appearance: textfield; }
   // EmailJS — inicializace po načtení SDK (bezpečná, neblokující)
   (function waitForEmailJS(n){
     if(typeof emailjs !== 'undefined'){
-      try { emailjs.init("VLOŽTE_VÁŠ_EMAILJS_PUBLIC_KEY"); } catch(e){}
+      try { emailjs.init(CPb7Fs8T2eyD6612X); } catch(e){}
     } else if(n < 20){
       setTimeout(function(){ waitForEmailJS(n+1); }, 300);
     }
@@ -1197,8 +1197,8 @@ function submitForm(){
     try {
       if(typeof emailjs !== 'undefined' && emailjs.send) {
         await emailjs.send(
-          'VLOŽTE_VÁŠ_SERVICE_ID',   // ⚙️ VÝVOJÁŘ: Service ID z EmailJS
-          'VLOŽTE_VÁŠ_TEMPLATE_ID',  // ⚙️ VÝVOJÁŘ: Template ID z EmailJS
+          service_0zu8waq,   // ⚙️ VÝVOJÁŘ: Service ID z EmailJS
+          Contact Us,  // ⚙️ VÝVOJÁŘ: Template ID z EmailJS
           data
         );
       }
